@@ -1,9 +1,11 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from tomlkit.toml_file import TOMLFile
 
 
 def entrypoint():
     args = get_program_args()
-    print(args)
+    toml = TOMLFile(args.config).read()
+    print(toml)
     return 0
 
 
