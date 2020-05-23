@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Register in acme-dns using Kubernetes secrets"
 authors = ["Elouan Martinet <exa@elou.world>"]
 license = "Unlicense"
+include = ["UNLICENSE"]
 
 [tool.poetry.dependencies]
 python = "^3.7, <3.9"
