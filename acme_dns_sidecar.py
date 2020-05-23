@@ -13,7 +13,8 @@ class InvalidConfiguration(ConfigurationError):
 def entrypoint():
     args = get_program_args()
     config = read_config(args.config)
-    print(config)
+    namespace = get_current_namespace()
+    print(namespace)
     return 0
 
 
@@ -65,6 +66,12 @@ def validate_config(config, toml, parent_prefix=None):
                     raise ConfigurationError('%s is not a string' % path)
                 config[key] = toml[key]
     return config
+
+
+def get_current_namespace():
+    path = '/var/run/secrets/kubernetes.io/serviceaccount/namespace'
+    with open(path) as fobj:
+        return fobj.read()
 
 
 if __name__ == "__main__":
