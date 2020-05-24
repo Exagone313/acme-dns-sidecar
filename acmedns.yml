@@ -1,0 +1,205 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: acmedns
+---
+apiVersion: policy/v1beta1
+kind: PodSecurityPolicy
+metadata:
+  name: acmedns
+spec:
+  readOnlyRootFilesystem: true
+  privileged: false
+  allowPrivilegeEscalation: false
+  requiredDropCapabilities:
+  - ALL
+  runAsUser:
+    rule: MustRunAsNonRoot
+  fsGroup:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1000
+      max: 1000
+  supplementalGroups:
+    rule: 'MustRunAs'
+    ranges:
+    - min: 1000
+      max: 1000
+  seLinux:
+    rule: RunAsAny
+  volumes:
+  - 'emptyDir'
+  - 'secret'
+  - 'downwardAPI'
+  - 'configMap'
+  hostPID: false
+  hostIPC: false
+  hostNetwork: false
+  hostPorts:
+  - min: 53
+    max: 53
+  allowedHostPaths: []
+---
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: acmedns
+  namespace: acmedns
+rules:
+- apiGroups:
+  - policy
+  resourceNames:
+  - acmedns
+  resources:
+  - podsecuritypolicies
+  verbs:
+  - use
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  namespace: acmedns
+  name: acmedns:sa-rb
+roleRef:
+  kind: Role
+  name: acmedns
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: Group
+  apiGroup: rbac.authorization.k8s.io
+  name: system:serviceaccounts:acmedns
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: acmedns
+  name: acmedns
+data:
+  config.cfg: |
+    [general]
+    listen = "0.0.0.0:8053"
+    protocol = "both4"
+    # domain name to serve the requests off of
+    domain = "auth.example.org"
+    # zone name server
+    nsname = "auth.example.org"
+    # admin email address, where @ is substituted with .
+    nsadmin = "admin.example.org"
+    # predefined records served in addition to the TXT
+    records = [
+      # domain pointing to the public IP of your acme-dns server
+      "auth.example.org. A 198.51.100.1",
+      # specify that auth.example.org will resolve any *.auth.example.org records
+      "auth.example.org. NS auth.example.org.",
+    ]
+    debug = false
+    [database]
+    # database engine, sqlite3 is the only supported engine
+    engine = "sqlite3"
+    # connection string, default is /var/lib/acme-dns/acme-dns.db for sqlite3
+    connection = "/var/lib/acme-dns/acme-dns.db"
+    [api]
+    ip = "0.0.0.0"
+    disable_registration = true
+    port = "8080"
+    tls = "none"
+    use_header = false
+    [logconfig]
+    # logging level: "error", "warning", "info" or "debug"
+    loglevel = "info"
+    logtype = "stdout"
+    logformat = "text"
+    [sidecar.secrets]
+    # only secrets matching these patterns will be read
+    #field_selector = ""
+    #label_selector = ""
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  namespace: acmedns
+  name: acmedns
+  labels:
+    app: acmedns
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: acmedns
+  template:
+    metadata:
+      labels:
+        app: acmedns
+    spec:
+      containers:
+      - name: acmedns
+        image: exagone313/acme-dns
+        ports:
+        - name: http
+          containerPort: 8080
+        - name: dns-tcp
+          containerPort: 8053
+          hostPort: 53
+        - name: dns-udp
+          containerPort: 8053
+          hostPort: 53
+          protocol: UDP
+        volumeMounts:
+        - mountPath: /etc/acme-dns
+          readOnly: true
+          name: config
+        - mountPath: /var/lib/acme-dns
+          name: database
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 2
+          periodSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 60
+      - name: sidecar
+        image: exagone313/acme-dns-sidecar
+        volumeMounts:
+        - mountPath: /etc/acme-dns
+          readOnly: true
+          name: config
+        - mountPath: /var/lib/acme-dns
+          name: database
+      volumes:
+      - name: config
+        configMap:
+          name: acmedns
+          items:
+          - key: config.cfg
+            path: config.cfg
+      - name: database
+        emptyDir:
+          medium: Memory
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: acmedns
+  name: acmedns
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: acmedns
