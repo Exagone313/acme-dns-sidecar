@@ -1,5 +1,9 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from uuid import UUID
+from base64 import b64decode
+import re
 from tomlkit.toml_file import TOMLFile
+import kubernetes
 
 
 class ConfigurationError(Exception):
@@ -13,8 +17,8 @@ class InvalidConfiguration(ConfigurationError):
 def entrypoint():
     args = get_program_args()
     config = read_config(args.config)
-    namespace = get_current_namespace()
-    print(namespace)
+    for secret in watch_secrets(config):
+        print(secret)
     return 0
 
 
@@ -72,6 +76,53 @@ def get_current_namespace():
     path = '/var/run/secrets/kubernetes.io/serviceaccount/namespace'
     with open(path) as fobj:
         return fobj.read()
+
+
+def watch_secrets(config):
+    namespace = get_current_namespace()
+    kubernetes.config.load_incluster_config()
+    v1 = kubernetes.client.CoreV1Api()
+    w = kubernetes.watch.Watch()
+    args = {
+        'namespace': namespace,
+        'watch': True,
+    }
+    if config['sidecar']['secrets']['field_selector'] is not None:
+        args['field_selector'] = config['sidecar']['secrets']['field_selector']
+    if config['sidecar']['secrets']['label_selector'] is not None:
+        args['label_selector'] = config['sidecar']['secrets']['label_selector']
+    for event in w.stream(v1.list_namespaced_secret, **args):
+        if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
+            secret = event['object']
+            data = decode_secret(secret.data)
+            if not valid_secret(data):
+                print('Ignoring invalid secret %s' % secret.metadata.name)
+            else:
+                yield data
+
+
+def decode_secret(data):
+    return {key: b64decode(value).decode() for key, value in data.items()}
+
+
+def valid_secret(data):
+    if not ('username' in data and 'password' in data and 'subdomain' in data):
+        print('Missing field in secret')
+        return False
+    try:
+        UUID(data['username'])
+    except ValueError:
+        print('username is not a valid UUID')
+        return False
+    pattern = re.compile('^[-_A-Za-z0-9]{40}$')
+    if not pattern.match(data['password']):
+        print('password is not valid')
+        return False
+    pattern = re.compile('^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
+    if not pattern.match(data['subdomain']):
+        print('subdomain is not valid')
+        return False
+    return True
 
 
 if __name__ == "__main__":
