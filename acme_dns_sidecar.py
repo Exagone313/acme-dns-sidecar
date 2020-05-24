@@ -2,8 +2,13 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from uuid import UUID
 from base64 import b64decode
 import re
+import sqlite3
+from contextlib import contextmanager
+from os import lstat
+from time import sleep
 from tomlkit.toml_file import TOMLFile
 import kubernetes
+import bcrypt
 
 
 class ConfigurationError(Exception):
@@ -17,8 +22,9 @@ class InvalidConfiguration(ConfigurationError):
 def entrypoint():
     args = get_program_args()
     config = read_config(args.config)
+    check_database(config)
     for secret in watch_secrets(config):
-        print(secret)
+        register_secret(config, secret)
     return 0
 
 
@@ -123,6 +129,66 @@ def valid_secret(data):
         print('subdomain is not valid')
         return False
     return True
+
+
+@contextmanager
+def get_database(config):
+    exists = False
+    while not exists:
+        try:
+            lstat(config['database']['connection'])
+            exists = True
+        except FileNotFoundError:
+            print('sqlite3 database not found, waiting for it to be created')
+            sleep(1)
+    conn = sqlite3.connect(config['database']['connection'],
+                           check_same_thread=False,
+                           timeout=10.0)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+def check_database(config):
+    check_table_exists(config, 'records')
+    check_table_exists(config, 'txt')
+
+
+def check_table_exists(config, table):
+    while True:
+        with get_database(config) as conn:
+            c = conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                      'AND name=?', (table,))
+            if c.fetchone():
+                return
+        print('%s table not yet created, waiting for it to be created' % table)
+        sleep(1)
+
+
+def password_hash(password):
+    return bcrypt.hashpw(password.encode('utf8'), bcrypt.gensalt())
+
+
+def register_secret(config, secret):
+    print('Register username %s' % secret['username'])
+    password = password_hash(secret['password'])
+    with get_database(config) as conn:
+        try:
+            c = conn.cursor()
+            c.execute('INSERT INTO records '
+                      '(Username, Password, Subdomain, AllowFrom) '
+                      "VALUES(?, ?, ?, '[]') "
+                      'ON CONFLICT(username) DO UPDATE SET '
+                      'Password=excluded.Password, '
+                      'Subdomain=excluded.Subdomain',
+                      (secret['username'], password, secret['subdomain']))
+            c.execute('INSERT INTO txt (Subdomain, LastUpdate) VALUES(?, 0)',
+                      (secret['subdomain'],))
+            conn.commit()
+        except sqlite3.DatabaseError as exc:
+            print('Database error: %s' % str(exc))
 
 
 if __name__ == "__main__":
