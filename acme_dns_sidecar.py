@@ -102,7 +102,8 @@ def watch_secrets(config):
             secret = event['object']
             data = decode_secret(secret.data)
             if not valid_secret(data):
-                print('Ignoring invalid secret %s' % secret.metadata.name)
+                print('Ignoring invalid secret %s' % secret.metadata.name,
+                      flush=True)
             else:
                 yield data
 
@@ -139,7 +140,8 @@ def get_database(config):
             lstat(config['database']['connection'])
             exists = True
         except FileNotFoundError:
-            print('sqlite3 database not found, waiting for it to be created')
+            print('sqlite3 database not found, waiting for it to be created',
+                  flush=True)
             sleep(1)
     conn = sqlite3.connect(config['database']['connection'],
                            check_same_thread=False,
@@ -163,7 +165,8 @@ def check_table_exists(config, table):
                       'AND name=?', (table,))
             if c.fetchone():
                 return
-        print('%s table not yet created, waiting for it to be created' % table)
+        print('%s table not yet created, waiting for it to be created' % table,
+              flush=True)
         sleep(1)
 
 
@@ -172,7 +175,7 @@ def password_hash(password):
 
 
 def register_secret(config, secret):
-    print('Register username %s' % secret['username'])
+    print('Register username %s' % secret['username'], flush=True)
     password = password_hash(secret['password'])
     with get_database(config) as conn:
         try:
@@ -188,7 +191,7 @@ def register_secret(config, secret):
                       (secret['subdomain'],))
             conn.commit()
         except sqlite3.DatabaseError as exc:
-            print('Database error: %s' % str(exc))
+            print('Database error: %s' % str(exc), flush=True)
 
 
 if __name__ == "__main__":
