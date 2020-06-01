@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from os import lstat
 from time import sleep
+import json
 from tomlkit.toml_file import TOMLFile
 import kubernetes
 import bcrypt
@@ -101,7 +102,11 @@ def watch_secrets(config):
         if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
             secret = event['object']
             data = decode_secret(secret.data)
-            if not valid_secret(data):
+            data_list = json_secret(data)
+            if data_list:
+                for item_data in data_list:
+                    yield item_data
+            elif not valid_secret(data):
                 print('Ignoring invalid secret %s' % secret.metadata.name,
                       flush=True)
             else:
@@ -110,6 +115,33 @@ def watch_secrets(config):
 
 def decode_secret(data):
     return {key: b64decode(value).decode() for key, value in data.items()}
+
+
+def json_secret(data):
+    if len(data) != 1:
+        return None
+    key = next(iter(data))
+    if not key.endswith('.json'):
+        return None
+    try:
+        obj = json.loads(data[key])
+    except json.JSONDecodeError:
+        print('Invalid JSON')
+        return None
+    if not isinstance(obj, dict):
+        print('JSON is not an object')
+        return None
+    if 'username' in obj and 'password' in obj and 'subdomain' in obj:
+        if valid_secret(obj):
+            return [obj]
+        return None
+    results = []
+    for domain in obj:
+        if valid_secret(obj[domain]):
+            results.append(obj[domain])
+        else:
+            print('Invalid object %s' % domain)
+    return results
 
 
 def valid_secret(data):
