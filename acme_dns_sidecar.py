@@ -219,6 +219,8 @@ def register_secret(config, secret):
                       'Password=excluded.Password, '
                       'Subdomain=excluded.Subdomain',
                       (secret['username'], password, secret['subdomain']))
+            c.execute('DELETE FROM txt WHERE Subdomain = ?',
+                      (secret['subdomain'],))
             c.execute('INSERT INTO txt (Subdomain, LastUpdate) VALUES(?, 0)',
                       (secret['subdomain'],))
             conn.commit()
