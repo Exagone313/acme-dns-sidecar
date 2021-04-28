@@ -39,3 +39,10 @@ You need to make sure port 53 is not used on the host, typically by local resolv
 ## License
 
 See [UNLICENSE](UNLICENSE).
+
+acme-dns-sidecar distribution relies on third party dependencies, such as:
+* [Debian Buster Docker image](https://hub.docker.com/_/debian) and Debian Buster packages, see `/usr/share/doc/*/copyright`
+* [Python](https://www.python.org/), under [PSF License](https://docs.python.org/3/license.html)
+* [Kubernetes Python Client](https://github.com/kubernetes-client/python), under Apache License 2.0
+* [TOML Kit](https://github.com/sdispater/tomlkit), under MIT License
+* [bcrypt](https://github.com/pyca/bcrypt), under Apache License 2.0
