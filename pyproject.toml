@@ -7,10 +7,10 @@ license = "Unlicense"
 include = ["UNLICENSE"]
 
 [tool.poetry.dependencies]
-python = "^3.7, <3.9"
-kubernetes = "^23.6"
-tomlkit = "^0.10.0"
-bcrypt = "^3.2.2"
+python = "^3.11.2"
+kubernetes = "^26.1"
+tomlkit = "^0.11.0"
+bcrypt = "^4.0.1"
 
 [tool.poetry.dev-dependencies]
 
