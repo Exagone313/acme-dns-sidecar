@@ -8,9 +8,9 @@ include = ["UNLICENSE"]
 
 [tool.poetry.dependencies]
 python = "^3.11.2"
-kubernetes = "^26.1"
-tomlkit = "^0.11.0"
-bcrypt = "^4.0.1"
+kubernetes = "^29.0"
+tomlkit = "^0.12.4"
+bcrypt = "^4.1.2"
 
 [tool.poetry.dev-dependencies]
 
