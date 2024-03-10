@@ -10,6 +10,7 @@ import json
 from tomlkit.toml_file import TOMLFile
 import kubernetes
 import bcrypt
+import urllib3.exceptions
 
 
 class ConfigurationError(Exception):
@@ -98,19 +99,23 @@ def watch_secrets(config):
         args['field_selector'] = config['sidecar']['secrets']['field_selector']
     if config['sidecar']['secrets']['label_selector'] is not None:
         args['label_selector'] = config['sidecar']['secrets']['label_selector']
-    for event in w.stream(v1.list_namespaced_secret, **args):
-        if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
-            secret = event['object']
-            data = decode_secret(secret.data)
-            data_list = json_secret(data)
-            if data_list:
-                for item_data in data_list:
-                    yield item_data
-            elif not valid_secret(data):
-                print('Ignoring invalid secret %s' % secret.metadata.name,
-                      flush=True)
-            else:
-                yield data
+    while True:
+        try:
+            for event in w.stream(v1.list_namespaced_secret, **args):
+                if event['type'] == 'ADDED' or event['type'] == 'MODIFIED':
+                    secret = event['object']
+                    data = decode_secret(secret.data)
+                    data_list = json_secret(data)
+                    if data_list:
+                        for item_data in data_list:
+                            yield item_data
+                    elif not valid_secret(data):
+                        print('Ignoring invalid secret %s' % secret.metadata.name,
+                              flush=True)
+                    else:
+                        yield data
+        except urllib3.exceptions.ProtocolError as exc:
+            print(str(exc))
 
 
 def decode_secret(data):
